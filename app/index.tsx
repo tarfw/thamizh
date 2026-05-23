@@ -1,64 +1,30 @@
-import { db } from "@/lib/db";
-import { AppSchema } from "@/instant.schema";
-import { InstaQLEntity } from "@instantdb/react-native";
-import { View, Text, Button } from "react-native";
+import { Redirect } from "expo-router";
+import { ActivityIndicator, Text, View } from "react-native";
+import { useSession } from "@/lib/auth";
+import { ACCENT, MUTED } from "@/lib/theme";
 
-type Color = InstaQLEntity<AppSchema, "colors">;
+export default function Index() {
+  const { isLoading, error, user, profile } = useSession();
 
-const selectId = "4d39508b-9ee2-48a3-b70d-8192d9c5a059";
-
-function App() {
-  const { isLoading, error, data } = db.useQuery({
-    colors: {
-      $: { where: { id: selectId } },
-    },
-  });
   if (isLoading) {
     return (
-      <View>
-        <Text>Loading...</Text>
+      <View className="flex-1 items-center justify-center bg-white">
+        <ActivityIndicator color={ACCENT} />
       </View>
     );
   }
+
   if (error) {
     return (
-      <View>
-        <Text>Error: {error.message}</Text>
+      <View className="flex-1 items-center justify-center bg-white px-6">
+        <Text className="text-[14px]" style={{ color: "#c0392b" }}>
+          {error.message}
+        </Text>
       </View>
     );
   }
 
-  return <Main color={data.colors[0]} />;
+  if (!user) return <Redirect href="/sign-in" />;
+  if (!profile?.constituency) return <Redirect href="/pick-constituency" />;
+  return <Redirect href="/constituencies" />;
 }
-
-function Main(props: { color?: Color }) {
-  const { value } = props.color || { value: "lightgray" };
-
-  return (
-    <View
-      className="flex flex-1 items-center justify-center"
-      style={[{ backgroundColor: value }]}
-    >
-      <View className="bg-white opacity-80 p-3 rounded-lg">
-        <Text className="text-[24px] font-bold mb-4">
-          Hi! pick your favorite color
-        </Text>
-        <View className="my-4">
-          {["green", "blue", "purple"].map((c) => {
-            return (
-              <Button
-                title={c}
-                onPress={() => {
-                  db.transact(db.tx.colors[selectId].update({ value: c }));
-                }}
-                key={c}
-              />
-            );
-          })}
-        </View>
-      </View>
-    </View>
-  );
-}
-
-export default App;

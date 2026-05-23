@@ -13,8 +13,24 @@ const _schema = i.schema({
       imageURL: i.string().optional(),
       type: i.string().optional(),
     }),
-    colors: i.entity({
-      value: i.string(),
+    profiles: i.entity({
+      displayName: i.string(),
+      createdAt: i.number().indexed(),
+      bio: i.string().optional(),
+      handle: i.string().optional(),
+    }),
+    constituencies: i.entity({
+      code: i.string().unique().indexed(),
+      slug: i.string().unique().indexed(),
+      nameEn: i.string().indexed(),
+      nameTa: i.string(),
+      district: i.string().indexed(),
+      number: i.number().indexed(),
+      reservation: i.string().optional(),
+    }),
+    messages: i.entity({
+      body: i.string(),
+      createdAt: i.number().indexed(),
     }),
   },
   rooms: {},
@@ -31,6 +47,27 @@ const _schema = i.schema({
         has: "many",
         label: "linkedGuestUsers",
       },
+    },
+    profileUser: {
+      forward: { on: "profiles", has: "one", label: "user" },
+      reverse: { on: "$users", has: "one", label: "profile" },
+    },
+    profileConstituency: {
+      forward: { on: "profiles", has: "one", label: "constituency" },
+      reverse: { on: "constituencies", has: "many", label: "members" },
+    },
+    messageAuthor: {
+      forward: { on: "messages", has: "one", label: "author", required: true },
+      reverse: { on: "profiles", has: "many", label: "messages" },
+    },
+    messageConstituency: {
+      forward: {
+        on: "messages",
+        has: "one",
+        label: "constituency",
+        required: true,
+      },
+      reverse: { on: "constituencies", has: "many", label: "messages" },
     },
   },
 });
