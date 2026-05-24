@@ -35,7 +35,15 @@ export function useSession() {
       : null,
   );
 
-  const profile = (profileQuery.data?.profiles?.[0] ?? null) as ProfileRow | null;
+  const originalProfile = profileQuery.data?.profiles?.[0] as ProfileRow | undefined;
+  const profile = originalProfile || (auth.user ? {
+    id: auth.user.id,
+    displayName: (auth.user as any).email?.split("@")[0] || "Guest Member",
+    handle: "guest",
+    createdAt: Date.now(),
+    bio: "I just joined the platform.",
+  } as ProfileRow : null);
+  
   const constituency = (profile?.constituency ?? null) as ConstituencyRow | null;
 
   return {

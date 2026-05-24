@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { id as instantId } from "@instantdb/react-native";
 import { Stack, useLocalSearchParams, useRouter, Redirect } from "expo-router";
 import { useState } from "react";
 import {
@@ -13,7 +12,7 @@ import {
 } from "react-native";
 import { Pressable } from "@/lib/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { db } from "@/lib/db";
+import { db, id as instantId } from "@/lib/db";
 import { useSession } from "@/lib/auth";
 import Avatar from "@/lib/Avatar";
 import {
@@ -87,7 +86,7 @@ export default function ConstituencyChat() {
     );
   }
   if (!user) return <Redirect href="/sign-in" />;
-  if (!profile?.constituency) return <Redirect href="/pick-constituency" />;
+  if (!profile) return null;
 
   const send = () => {
     const body = draft.trim();

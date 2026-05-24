@@ -10,8 +10,7 @@ import {
 import { Pressable } from "@/lib/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Redirect, Stack, useRouter } from "expo-router";
-import { id as instantId } from "@instantdb/react-native";
-import { db } from "@/lib/db";
+import { db, id as instantId } from "@/lib/db";
 import { useSession, type ConstituencyRow } from "@/lib/auth";
 import Avatar from "@/lib/Avatar";
 import BrandLogo from "@/lib/BrandLogo";

@@ -124,7 +124,6 @@ export default function ConstituenciesIndex() {
   const [tab, setTab] = useState<Tab>("spaces");
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [activeLocation, setActiveLocation] = useState<"Tamilnadu" | "Eelam">("Tamilnadu");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [bskyPosts, setBskyPosts] = useState<any[]>([]);
   const [bskyLoading, setBskyLoading] = useState(false);
   const [bskyUntil, setBskyUntil] = useState<string | null>(null);
@@ -308,110 +307,10 @@ export default function ConstituenciesIndex() {
     );
   }
   if (!user) return <Redirect href="/sign-in" />;
-  if (!profile?.constituency) return <Redirect href="/pick-constituency" />;
 
   return (
     <View style={{ flex: 1, backgroundColor: "white" }}>
       <Stack.Screen options={{ headerShown: false }} />
-
-      {/* Bottom Drawer for Community Selection */}
-      <Modal
-        visible={dropdownOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setDropdownOpen(false)}
-      >
-        <Pressable
-          onPress={() => setDropdownOpen(false)}
-          style={{
-            flex: 1,
-            backgroundColor: "transparent",
-            justifyContent: "flex-end",
-          }}
-        >
-          <Pressable
-            onPress={() => {}}
-            style={{
-              backgroundColor: "white",
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              paddingTop: 8,
-              paddingBottom: Math.max(insets.bottom, 16) + 8,
-            }}
-          >
-            {/* Drawer grabber */}
-            <View
-              style={{
-                alignSelf: "center",
-                width: 38,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: HAIRLINE,
-                marginTop: 6,
-                marginBottom: 10,
-              }}
-            />
-
-            <Pressable
-              onPress={() => {
-                setActiveLocation("Eelam");
-                setDropdownOpen(false);
-              }}
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingHorizontal: 20,
-                paddingVertical: 14,
-                backgroundColor: pressed ? SURFACE_HOVER : "transparent",
-                borderBottomWidth: 0.5,
-                borderBottomColor: HAIRLINE,
-              })}
-            >
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: activeLocation === "Eelam" ? "600" : "500",
-                  color: activeLocation === "Eelam" ? ACCENT : TEXT,
-                }}
-              >
-                Eelam
-              </Text>
-              {activeLocation === "Eelam" ? (
-                <Ionicons name="checkmark" size={18} color={ACCENT} />
-              ) : null}
-            </Pressable>
-
-            <Pressable
-              onPress={() => {
-                setActiveLocation("Tamilnadu");
-                setDropdownOpen(false);
-              }}
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingHorizontal: 20,
-                paddingVertical: 14,
-                backgroundColor: pressed ? SURFACE_HOVER : "transparent",
-              })}
-            >
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: activeLocation === "Tamilnadu" ? "600" : "500",
-                  color: activeLocation === "Tamilnadu" ? ACCENT : TEXT,
-                }}
-              >
-                Tamil Nadu
-              </Text>
-              {activeLocation === "Tamilnadu" ? (
-                <Ionicons name="checkmark" size={18} color={ACCENT} />
-              ) : null}
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       {/* Top brand header */}
       <View
@@ -439,27 +338,7 @@ export default function ConstituenciesIndex() {
             <BrandLogo size={22} color={ACCENT} />
           </View>
           
-          <Pressable
-            onPress={() => setDropdownOpen(true)}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              opacity: pressed ? 0.7 : 1,
-              marginLeft: 10,
-            })}
-          >
-            <Text
-              style={{
-                fontSize: 18,
-                fontWeight: "700",
-                color: TEXT,
-                letterSpacing: -0.4,
-              }}
-            >
-              {activeLocation === "Tamilnadu" ? "Tamil Nadu" : "Eelam"}
-            </Text>
-            <Ionicons name="chevron-down" size={14} color={TEXT} style={{ marginLeft: 5, marginTop: 1 }} />
-          </Pressable>
+          <LocationSelector activeLocation={activeLocation} setActiveLocation={setActiveLocation} insets={insets} />
         </View>
 
         <Pressable
@@ -1139,4 +1018,135 @@ function formatTimestamp(t: number) {
     return d.toLocaleDateString([], { month: "short", day: "numeric" });
   }
   return d.toLocaleDateString([], { year: "numeric", month: "short" });
+}
+
+function LocationSelector({ activeLocation, setActiveLocation, insets }: any) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  return (
+    <>
+      <Pressable
+        onPress={() => setDropdownOpen(true)}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          opacity: pressed ? 0.7 : 1,
+          marginLeft: 10,
+        })}
+      >
+        <Text
+          style={{
+            fontSize: 18,
+            fontWeight: "700",
+            color: TEXT,
+            letterSpacing: -0.4,
+          }}
+        >
+          {activeLocation === "Tamilnadu" ? "Tamil Nadu" : "Eelam"}
+        </Text>
+        <Ionicons name="chevron-down" size={14} color={TEXT} style={{ marginLeft: 5, marginTop: 1 }} />
+      </Pressable>
+
+      <Modal
+        visible={dropdownOpen}
+        transparent
+        animationType="none"
+        onRequestClose={() => setDropdownOpen(false)}
+      >
+        <View style={{ flex: 1, justifyContent: "flex-end" }}>
+          <Pressable
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0,0,0,0.4)",
+            }}
+            onPress={() => setDropdownOpen(false)}
+          />
+          
+          <View
+            style={{
+              backgroundColor: "white",
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              paddingTop: 8,
+              paddingBottom: Math.max(insets.bottom, 16) + 8,
+            }}
+          >
+            <View
+              style={{
+                alignSelf: "center",
+                width: 38,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: HAIRLINE,
+                marginTop: 6,
+                marginBottom: 10,
+              }}
+            />
+
+            <Pressable
+              onPress={() => {
+                setActiveLocation("Eelam");
+                setDropdownOpen(false);
+              }}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingHorizontal: 20,
+                paddingVertical: 14,
+                backgroundColor: pressed ? SURFACE_HOVER : "transparent",
+                borderBottomWidth: 0.5,
+                borderBottomColor: HAIRLINE,
+              })}
+            >
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: activeLocation === "Eelam" ? "600" : "500",
+                  color: activeLocation === "Eelam" ? ACCENT : TEXT,
+                }}
+              >
+                Eelam
+              </Text>
+              {activeLocation === "Eelam" ? (
+                <Ionicons name="checkmark" size={18} color={ACCENT} />
+              ) : null}
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                setActiveLocation("Tamilnadu");
+                setDropdownOpen(false);
+              }}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingHorizontal: 20,
+                paddingVertical: 14,
+                backgroundColor: pressed ? SURFACE_HOVER : "transparent",
+              })}
+            >
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: activeLocation === "Tamilnadu" ? "600" : "500",
+                  color: activeLocation === "Tamilnadu" ? ACCENT : TEXT,
+                }}
+              >
+                Tamil Nadu
+              </Text>
+              {activeLocation === "Tamilnadu" ? (
+                <Ionicons name="checkmark" size={18} color={ACCENT} />
+              ) : null}
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
 }

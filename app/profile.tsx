@@ -107,11 +107,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSignOut = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setShowDrawer(false);
-    db.auth.signOut();
-  };
+
 
   const copyAccountId = () => {
     if (!profile) return;
@@ -130,7 +126,8 @@ export default function ProfileScreen() {
   }
 
   if (!user) return <Redirect href="/sign-in" />;
-  if (!profile) return <Redirect href="/pick-constituency" />;
+  if (!profile) return null;
+
 
   const displayHandle = profile.handle 
     ? `@${profile.handle}.tamilatchi.org`
@@ -415,23 +412,7 @@ export default function ProfileScreen() {
                 </Text>
               </Pressable>
 
-              {/* Sign Out Row */}
-              <Pressable
-                onPress={handleSignOut}
-                style={({ pressed }) => ({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingVertical: 12,
-                  paddingHorizontal: 12,
-                  borderRadius: 10,
-                  backgroundColor: pressed ? "#FDEDEC" : "transparent",
-                })}
-              >
-                <Ionicons name="log-out-outline" size={18} color={DANGER} style={{ marginRight: 12 }} />
-                <Text style={{ fontSize: 14, fontWeight: "500", color: DANGER }}>
-                  Sign Out
-                </Text>
-              </Pressable>
+
             </View>
 
             {/* Metadata / Info Section */}

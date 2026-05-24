@@ -4,6 +4,7 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
+import { db } from "@/lib/db";
 import {
   SafeAreaProvider,
   initialWindowMetrics,
@@ -24,6 +25,22 @@ const AppTheme: Theme = {
 export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
+  });
+
+  // Pre-warm queries to cache data and eliminate navigation delay
+  const auth = db.useAuth();
+  db.useQuery(
+    auth.user?.id
+      ? {
+          profiles: {
+            $: { where: { "user.id": auth.user.id } },
+            constituency: {},
+          },
+        }
+      : null
+  );
+  db.useQuery({
+    constituencies: { $: { order: { number: "asc" } } },
   });
 
   if (!loaded) {
