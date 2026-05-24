@@ -54,7 +54,7 @@ export default function RootLayout() {
             options={{ headerShown: false }}
           />
           <Stack.Screen
-            name="constituencies/index"
+            name="spaces/index"
             options={{ headerShown: false }}
           />
           <Stack.Screen name="profile" options={{ headerShown: false }} />

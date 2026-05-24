@@ -298,7 +298,7 @@ export default function ProfileScreen() {
               {/* Constituency Tag */}
               {item.constituency ? (
                 <Pressable
-                  onPress={() => router.push(`/constituencies/${item.constituency.code}`)}
+                  onPress={() => router.push(`/spaces/${item.constituency.code}`)}
                   style={{
                     backgroundColor: SURFACE_ALT,
                     paddingHorizontal: 8,

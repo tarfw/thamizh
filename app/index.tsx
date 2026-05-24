@@ -26,5 +26,5 @@ export default function Index() {
 
   if (!user) return <Redirect href="/sign-in" />;
   if (!profile?.constituency) return <Redirect href="/pick-constituency" />;
-  return <Redirect href="/constituencies" />;
+  return <Redirect href="/spaces" />;
 }

@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ACCENT, ACCENT_SOFT, HAIRLINE, MUTED, SURFACE_ALT, TEXT } from "./theme";
 
@@ -15,41 +14,37 @@ export default function ModuleStub({
   blurb: string;
   icon?: keyof typeof Ionicons.glyphMap;
 }) {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   return (
     <View style={{ flex: 1, backgroundColor: "white" }}>
       <View
         style={{
-          paddingTop: insets.top + 6,
-          paddingBottom: 8,
-          paddingHorizontal: 4,
+          paddingTop: insets.top,
           borderBottomWidth: 1,
           borderBottomColor: HAIRLINE,
-          flexDirection: "row",
-          alignItems: "center",
         }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={10}
-          style={({ pressed }) => ({ padding: 10, opacity: pressed ? 0.6 : 1 })}
-        >
-          <Ionicons name="arrow-back" size={22} color={TEXT} />
-        </Pressable>
-        <Text
+        <View
           style={{
-            flex: 1,
-            fontSize: 18,
-            color: TEXT,
-            fontWeight: "500",
-            marginLeft: 4,
-            letterSpacing: 0.1,
+            height: 56,
+            paddingHorizontal: 16,
+            flexDirection: "row",
+            alignItems: "center",
           }}
-          numberOfLines={1}
         >
-          {titleEn}
-        </Text>
+          <Text
+            style={{
+              flex: 1,
+              fontSize: 18,
+              color: TEXT,
+              fontWeight: "500",
+              letterSpacing: 0.1,
+            }}
+            numberOfLines={1}
+          >
+            {titleEn}
+          </Text>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>

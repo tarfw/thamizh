@@ -59,7 +59,7 @@ export default function PickConstituency() {
     );
   }
   if (!user) return <Redirect href="/sign-in" />;
-  if (profile?.constituency) return <Redirect href="/constituencies" />;
+  if (profile?.constituency) return <Redirect href="/spaces" />;
 
   const pick = async (row: ConstituencyRow) => {
     if (saving) return;
@@ -74,7 +74,7 @@ export default function PickConstituency() {
         })
         .link({ user: user.id, constituency: row.id });
       await db.transact(tx);
-      router.replace("/constituencies");
+      router.replace("/spaces");
     } finally {
       setSaving(false);
     }
