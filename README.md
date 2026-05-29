@@ -1,18 +1,12 @@
-# Welcome to your InstantDB Expo app 👋
+# Thamizh
 
-[InstantDB Docs](https://www.instantdb.com/docs)
-[Expo Docs](https://docs.expo.dev/)
+Expo + React Native app backed by [SpacetimeDB](https://spacetimedb.com/).
 
-This is an Expo project scaffolded with create-instant-app.
+## Development
 
-To run the development server:
-`npm run start`
+```
+npm install
+npm run start
+```
 
-To push schema changes:
-`npx instant-cli push`
-
-To pull schema changes:
-`npx instant-cli pull`
-
-
-Got any feedback or questions? Join our [Discord](https://discord.gg/hgVf9R6SBm)
+The SpacetimeDB module lives in `thamizh-server/`. Client bindings are generated into `lib/module_bindings/`.

@@ -1,10 +1,22 @@
-import { Redirect } from "expo-router";
+import { useEffect } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useSession } from "@/lib/auth";
 import { ACCENT, MUTED } from "@/lib/theme";
 
 export default function Index() {
-  const { isLoading, error, user, profile } = useSession();
+  const { isLoading, error, user } = useSession();
+  const router = useRouter();
+  const userId = user?.id ?? null;
+
+  useEffect(() => {
+    if (isLoading || error) return;
+    if (userId) {
+      router.replace("/spaces");
+    } else {
+      router.replace("/sign-in");
+    }
+  }, [isLoading, error, userId]);
 
   if (isLoading) {
     return (
@@ -18,12 +30,15 @@ export default function Index() {
     return (
       <View className="flex-1 items-center justify-center bg-white px-6">
         <Text className="text-[14px]" style={{ color: "#c0392b" }}>
-          {error.message}
+          {String(error)}
         </Text>
       </View>
     );
   }
 
-  if (!user) return <Redirect href="/sign-in" />;
-  return <Redirect href="/spaces" />;
+  return (
+    <View className="flex-1 items-center justify-center bg-white">
+      <ActivityIndicator color={ACCENT} />
+    </View>
+  );
 }

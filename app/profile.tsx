@@ -15,7 +15,8 @@ import {
 } from "react-native";
 import { Pressable } from "@/lib/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { db } from "@/lib/db";
+import { useSpacetimeDB } from "@/lib/SpacetimeDBProvider";
+import { callReducer, ts } from "@/lib/db";
 import { useSession } from "@/lib/auth";
 import Avatar from "@/lib/Avatar";
 import {
@@ -45,26 +46,23 @@ export default function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [copied, setCopied] = useState(false);
-
   // Query this user's posts
-  const messagesQuery = db.useQuery(
-    profile
-      ? {
-          messages: {
-            $: {
-              where: { "author.id": profile.id },
-              order: { createdAt: "desc" },
-              limit: 100,
-            },
-            constituency: {},
-          },
-        }
-      : null
-  );
+  const { messages: allMessages } = useSpacetimeDB();
 
   const posts = useMemo(() => {
-    return (messagesQuery?.data?.messages ?? []) as any[];
-  }, [messagesQuery?.data]);
+    if (!profile) return [];
+    return allMessages
+      .filter((m) => m.sender.toHexString() === profile.id)
+      .sort((a, b) => ts(b.sent) - ts(a.sent))
+      .slice(0, 100)
+      .map((m, idx) => ({
+        id: `${m.sender.toHexString()}_${ts(m.sent)}_${idx}`,
+        body: m.body,
+        createdAt: ts(m.sent),
+        author: { id: profile.id, displayName: profile.displayName },
+        constituency: m.roomType === "constituency" ? { code: m.roomId, nameEn: m.roomId } : null,
+      }));
+  }, [allMessages, profile]);
 
   const handleEditPress = () => {
     if (!profile) return;
@@ -92,13 +90,7 @@ export default function ProfileScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
     try {
-      await db.transact([
-        db.tx.profiles[profile.id].update({
-          displayName: name,
-          handle: handleVal || null,
-          bio: editBio.trim() || null,
-        }),
-      ]);
+      await callReducer("set_display_name", { displayName: name, handle: handleVal || name });
       setIsEditing(false);
     } catch (e: any) {
       setErrorMsg(e?.message ?? "Failed to save profile changes");
@@ -258,16 +250,11 @@ export default function ProfileScreen() {
         }
         ListEmptyComponent={
           <View style={{ padding: 48, alignItems: "center" }}>
-            {messagesQuery.isLoading ? (
-              <ActivityIndicator color={ACCENT} />
-            ) : (
-              <>
-                <Ionicons name="chatbubbles-outline" size={32} color={MUTED} style={{ marginBottom: 12 }} />
+            <><Ionicons name="chatbubbles-outline" size={32} color={MUTED} style={{ marginBottom: 12 }} />
                 <Text style={{ fontSize: 13, color: MUTED, textAlign: "center" }}>
                   No posts yet. Start conversation in your constituency.
                 </Text>
               </>
-            )}
           </View>
         }
         renderItem={({ item }) => (
@@ -295,7 +282,7 @@ export default function ProfileScreen() {
               {/* Constituency Tag */}
               {item.constituency ? (
                 <Pressable
-                  onPress={() => router.push(`/spaces/${item.constituency.code}`)}
+                  onPress={() => router.push(`/spaces/${item.constituency!.code}`)}
                   style={{
                     backgroundColor: SURFACE_ALT,
                     paddingHorizontal: 8,
@@ -304,7 +291,7 @@ export default function ProfileScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 10, color: MUTED, fontWeight: "500" }}>
-                    #{item.constituency.nameEn}
+                    #{item.constituency?.nameEn ?? ""}
                   </Text>
                 </Pressable>
               ) : null}

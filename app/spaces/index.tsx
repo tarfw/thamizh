@@ -14,8 +14,10 @@ import {
 } from "react-native";
 import { Pressable } from "@/lib/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { db } from "@/lib/db";
-import { useSession } from "@/lib/auth";
+import { useSpacetimeDB } from "@/lib/SpacetimeDBProvider";
+import { ts } from "@/lib/db";
+import { useSession, constituencies } from "@/lib/auth";
+import type { Message } from "@/lib/module_bindings/types";
 import Avatar from "@/lib/Avatar";
 import BrandLogo from "@/lib/BrandLogo";
 import {
@@ -210,27 +212,36 @@ export default function ConstituenciesIndex() {
     await AsyncStorage.setItem("@pinned_spaces", JSON.stringify(next));
   };
 
-  const { data, isLoading: listLoading } = db.useQuery({
-    constituencies: {
-      $: { order: { number: "asc" } },
-      messages: { $: { order: { createdAt: "desc" } } },
-    },
-  });
-
-  const { data: feedData, isLoading: feedLoading } = db.useQuery({
-    messages: {
-      $: { order: { createdAt: "desc" }, limit: 40 },
-      author: {},
-      constituency: {},
-    },
-  });
+  const { messages: allMessages } = useSpacetimeDB();
+  const constituencyMessages = allMessages.filter(
+    (m) => m.roomType === "constituency"
+  );
 
   const rows = useMemo(() => {
     if (activeLocation === "Eelam") {
       return EELAM_CONSTITUENCIES;
     }
-    return (data?.constituencies ?? []) as Row[];
-  }, [data, activeLocation]);
+    return constituencies.map((c) => {
+      const msgs = constituencyMessages
+        .filter((m) => m.roomId === c.code)
+        .sort((a, b) => ts(b.sent) - ts(a.sent));
+      return {
+        id: c.id,
+        code: c.code,
+        slug: c.slug,
+        nameEn: c.nameEn,
+        nameTa: c.nameTa,
+        district: c.district,
+        number: c.number,
+        reservation: c.reservation,
+        messages: msgs.map((m, idx) => ({
+          id: `${m.sender.toHexString()}_${ts(m.sent)}_${idx}`,
+          body: m.body,
+          createdAt: ts(m.sent),
+        })),
+      } as Row;
+    });
+  }, [constituencyMessages, activeLocation]);
 
   const feedMessages = useMemo(() => {
     if (activeLocation === "Eelam") {
@@ -258,10 +269,19 @@ export default function ConstituenciesIndex() {
         }
       ] as any[];
     }
-    return (feedData?.messages ?? []) as any[];
-  }, [feedData, activeLocation]);
+    return constituencyMessages
+      .sort((a, b) => ts(b.sent) - ts(a.sent))
+      .slice(0, 40)
+      .map((m, idx) => ({
+        id: `${m.sender.toHexString()}_${ts(m.sent)}_${idx}`,
+        body: m.body,
+        createdAt: ts(m.sent),
+        author: { id: m.sender.toHexString(), displayName: m.sender.toHexString().slice(0, 8) },
+        constituency: { code: m.roomId, nameEn: m.roomId },
+      }));
+  }, [constituencyMessages, activeLocation]);
 
-  const ordered = useMemo(() => {
+  const ordered: Row[] = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = q
       ? rows.filter(
@@ -276,18 +296,7 @@ export default function ConstituenciesIndex() {
     const pinned = filtered.filter((r) => pinnedIds.includes(r.id));
     const unpinned = filtered.filter((r) => !pinnedIds.includes(r.id));
 
-    // Sort pinned by number
     pinned.sort((a, b) => a.number - b.number);
-
-    // For unpinned, if constituency exists, put it first in the unpinned list
-    if (constituency) {
-      const myIdx = unpinned.findIndex((r) => r.id === constituency.id);
-      if (myIdx >= 0) {
-        const mine = unpinned[myIdx];
-        unpinned.splice(myIdx, 1);
-        unpinned.unshift(mine);
-      }
-    }
 
     return [...pinned, ...unpinned];
   }, [rows, query, pinnedIds, constituency]);
@@ -352,7 +361,7 @@ export default function ConstituenciesIndex() {
           })}
         >
           <Avatar
-            name={profile?.displayName ?? user.email ?? "Me"}
+            name={profile?.displayName ?? "Me"}
             size={34}
             seed={user.id}
           />
@@ -466,7 +475,7 @@ export default function ConstituenciesIndex() {
       ) : (
         <FlatList
           style={{ flex: 1 }}
-          data={tab === "spaces" ? ordered : []}
+          data={(tab === "spaces" ? ordered : []) as Row[]}
           keyExtractor={(r) => r.id}
           contentContainerStyle={{
             paddingVertical: 4,
@@ -482,9 +491,7 @@ export default function ConstituenciesIndex() {
                 paddingHorizontal: 32,
               }}
             >
-              {listLoading ? (
-                <ActivityIndicator color={ACCENT} />
-              ) : tab === "chats" ? (
+              {tab === "chats" ? (
                 <>
                   <View
                     style={{
@@ -529,7 +536,7 @@ export default function ConstituenciesIndex() {
           renderItem={({ item }) => (
             <ChatRow
               row={item}
-              mine={item.id === constituency?.id}
+              mine={false}
               isPinned={pinnedIds.includes(item.id)}
               onLongPress={() => togglePin(item.id)}
             />
@@ -572,6 +579,18 @@ export default function ConstituenciesIndex() {
           icon={tab === "chats" ? "chatbubble" : "chatbubble-outline"}
           active={tab === "chats"}
           onPress={() => setTab("chats")}
+        />
+        <NavButton
+          label="Private"
+          icon="chatbubble"
+          active={false}
+              onPress={() => router.push("/chats/private" as any)}
+        />
+        <NavButton
+          label="Groups"
+          icon="chatbubble"
+          active={false}
+              onPress={() => router.push("/chats/groups" as any)}
         />
       </View>
     </View>

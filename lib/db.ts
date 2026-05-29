@@ -1,8 +1,275 @@
-import { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import constituenciesData from "../data/tn-assembly-constituencies.json";
+import { DbConnection, tables, reducers } from "./module_bindings";
+import type { User, Message, GroupChat, GroupMember } from "./module_bindings/types";
 
-// Unique ID Generator
+export type { User, Message, GroupChat, GroupMember };
+export { tables, reducers };
+
+const DB_NAME = "thamizh-chat";
+const HOST = "wss://maincloud.spacetimedb.com";
+const TOKEN_KEY = `@spacetime_token_${DB_NAME}`;
+
+type Listener = () => void;
+
+let connection: any = null;
+let identityRef: { toHexString(): string } | null = null;
+let identityHex: string | null = null;
+let isActive = false;
+let tablesReady = false;
+let connectError: string | null = null;
+const listeners = new Set<Listener>();
+
+let connectionStateSnapshot: {
+  isActive: boolean;
+  identity: { toHexString(): string } | null;
+  tablesReady: boolean;
+  error: string | null;
+} = { isActive: false, identity: null, tablesReady: false, error: null };
+
+let usersSnapshot: readonly User[] = [];
+let messagesSnapshot: readonly Message[] = [];
+let groupChatsSnapshot: readonly GroupChat[] = [];
+let groupMembersSnapshot: readonly GroupMember[] = [];
+
+function refreshConnectionSnapshot() {
+  connectionStateSnapshot = {
+    isActive,
+    identity: identityRef,
+    tablesReady,
+    error: connectError,
+  };
+}
+
+function refreshUsersSnapshot() {
+  if (!connection || !tablesReady) {
+    usersSnapshot = [];
+    return;
+  }
+  usersSnapshot = Array.from((connection.db as any).user.iter()) as User[];
+}
+
+function refreshMessagesSnapshot() {
+  if (!connection || !tablesReady) {
+    messagesSnapshot = [];
+    return;
+  }
+  messagesSnapshot = Array.from((connection.db as any).message.iter()) as Message[];
+}
+
+function refreshGroupChatsSnapshot() {
+  if (!connection || !tablesReady) {
+    groupChatsSnapshot = [];
+    return;
+  }
+  groupChatsSnapshot = Array.from((connection.db as any).groupChat.iter()) as GroupChat[];
+}
+
+function refreshGroupMembersSnapshot() {
+  if (!connection || !tablesReady) {
+    groupMembersSnapshot = [];
+    return;
+  }
+  groupMembersSnapshot = Array.from((connection.db as any).groupMember.iter()) as GroupMember[];
+}
+
+export function getConnectionState() {
+  return connectionStateSnapshot;
+}
+
+export function getUsers(): readonly User[] {
+  return usersSnapshot;
+}
+
+export function getMessages(): readonly Message[] {
+  return messagesSnapshot;
+}
+
+export function getGroupChats(): readonly GroupChat[] {
+  return groupChatsSnapshot;
+}
+
+export function getGroupMembers(): readonly GroupMember[] {
+  return groupMembersSnapshot;
+}
+
+export function subscribe(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+function notify() {
+  for (const fn of listeners) fn();
+}
+
+async function restoreToken(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function attachTableListener(
+  tableName: string,
+  refreshFn: () => void,
+) {
+  const db: any = connection?.db;
+  const table = db?.[tableName];
+  if (!table) {
+    console.warn(`[db] table ${tableName} not found on connection.db`);
+    return;
+  }
+  const onChange = () => { refreshFn(); notify(); };
+  try { table.onInsert?.(onChange); } catch (e) { console.warn(`[db] ${tableName}.onInsert failed`, e); }
+  try { table.onUpdate?.(onChange); } catch (e) { console.warn(`[db] ${tableName}.onUpdate failed`, e); }
+  try { table.onDelete?.(onChange); } catch (e) { console.warn(`[db] ${tableName}.onDelete failed`, e); }
+}
+
+function attachAllTableListeners() {
+  attachTableListener("user", refreshUsersSnapshot);
+  attachTableListener("message", refreshMessagesSnapshot);
+  attachTableListener("groupChat", refreshGroupChatsSnapshot);
+  attachTableListener("groupMember", refreshGroupMembersSnapshot);
+}
+
+let initPromise: Promise<void> | null = null;
+
+export async function ensureConnected(): Promise<void> {
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    const token = await restoreToken();
+    const builder = DbConnection.builder()
+      .withUri(HOST)
+      .withDatabaseName(DB_NAME)
+      .withCompression("none");
+
+    if (token) builder.withToken(token);
+
+    builder
+      .onConnect((_ctx, ident, tok) => {
+        identityRef = ident as any;
+        identityHex = (ident as any).toHexString();
+        isActive = true;
+        AsyncStorage.setItem(TOKEN_KEY, tok).catch(() => {});
+        refreshConnectionSnapshot();
+        notify();
+      })
+      .onDisconnect(() => {
+        const wasActive = isActive;
+        isActive = false;
+        identityRef = null;
+        identityHex = null;
+        tablesReady = false;
+        usersSnapshot = [];
+        messagesSnapshot = [];
+        groupChatsSnapshot = [];
+        groupMembersSnapshot = [];
+        refreshConnectionSnapshot();
+        if (wasActive) notify();
+      })
+      .onConnectError((_ctx, err) => {
+        console.error("SpacetimeDB connection error:", err);
+        connectError = err instanceof Error ? err.message : String(err);
+        refreshConnectionSnapshot();
+        notify();
+      });
+
+    connection = builder.build() as any;
+
+    // Wait for connection to go active (15s timeout so the UI doesn't spin forever)
+    await new Promise<void>((resolve, reject) => {
+      if (connection!.isActive) {
+        resolve();
+        return;
+      }
+      const deadline = Date.now() + 15000;
+      const check = () => {
+        if (connection!.isActive) {
+          resolve();
+        } else if (connectError) {
+          reject(new Error(`SpacetimeDB connect failed: ${connectError}`));
+        } else if (Date.now() > deadline) {
+          reject(new Error(`SpacetimeDB connect timed out after 15s (host=${HOST}, db=${DB_NAME})`));
+        } else {
+          setTimeout(check, 100);
+        }
+      };
+      check();
+    });
+
+    // Subscribe to all tables (10s timeout)
+    await new Promise<void>((resolve, reject) => {
+      const deadline = setTimeout(() => {
+        reject(new Error("SpacetimeDB subscription timed out after 10s — does the deployed module have the expected tables?"));
+      }, 10000);
+
+      const subBuilder = connection!.subscriptionBuilder()
+        .onApplied(() => {
+          clearTimeout(deadline);
+          tablesReady = true;
+          try { attachAllTableListeners(); } catch (e) { console.warn("[db] attachAllTableListeners failed", e); }
+          refreshUsersSnapshot();
+          refreshMessagesSnapshot();
+          refreshGroupChatsSnapshot();
+          refreshGroupMembersSnapshot();
+          refreshConnectionSnapshot();
+          notify();
+          resolve();
+        });
+
+      // onError is available on newer SDKs; guard for older ones
+      if (typeof subBuilder.onError === "function") {
+        subBuilder.onError((_ctx: unknown, err: unknown) => {
+          clearTimeout(deadline);
+          reject(new Error(`SpacetimeDB subscription failed: ${err instanceof Error ? err.message : String(err)}`));
+        });
+      }
+
+      subBuilder.subscribe([
+        "SELECT * FROM user",
+        "SELECT * FROM message",
+        "SELECT * FROM reaction",
+        "SELECT * FROM privateChat",
+        "SELECT * FROM groupChat",
+        "SELECT * FROM groupMember",
+      ]);
+    });
+  })().catch((err) => {
+    console.error("[db] ensureConnected failed:", err);
+    connectError = err instanceof Error ? err.message : String(err);
+    refreshConnectionSnapshot();
+    notify();
+    initPromise = null;
+    throw err;
+  });
+  return initPromise;
+}
+
+export function getDb() {
+  return connection;
+}
+
+export function getIdentity() {
+  return identityRef;
+}
+
+export function getIdentityHex() {
+  return identityHex;
+}
+
+export function ts(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "object") {
+    const v = value as { toMillis?: () => bigint | number; toDate?: () => Date };
+    if (typeof v.toMillis === "function") return Number(v.toMillis());
+    if (typeof v.toDate === "function") return v.toDate().getTime();
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function id(): string {
   return (
     Math.random().toString(36).substring(2, 15) +
@@ -10,379 +277,18 @@ export function id(): string {
   );
 }
 
-const constituencies = constituenciesData.map((c) => ({
-  ...c,
-  id: c.code,
-}));
-
-// Local State Store
-type Store = {
-  user: { id: string; email?: string; isGuest?: boolean } | null;
-  profiles: Record<
-    string,
-    {
-      id: string;
-      displayName: string;
-      createdAt: number;
-      bio?: string;
-      handle?: string;
-      userId?: string;
-      constituencyId?: string;
-    }
-  >;
-  messages: Record<
-    string,
-    {
-      id: string;
-      body: string;
-      createdAt: number;
-      authorId: string;
-      constituencyId: string;
-    }
-  >;
-};
-
-const SEED_PROFILES: Record<string, any> = {
-  "seed-prof-1": {
-    id: "seed-prof-1",
-    displayName: "Anbalagan K.",
-    createdAt: Date.now() - 86400000 * 5,
-    bio: "Pioneering community-first digital governance initiatives.",
-    handle: "anbalagan",
-    constituencyId: "021",
-  },
-  "seed-prof-2": {
-    id: "seed-prof-2",
-    displayName: "Senthamizh Selvi",
-    createdAt: Date.now() - 86400000 * 4,
-    bio: "Advocating for digital sovereignty and direct representation.",
-    handle: "selvi_s",
-    constituencyId: "021",
-  },
-  "seed-prof-3": {
-    id: "seed-prof-3",
-    displayName: "Arun Kumar",
-    createdAt: Date.now() - 86400000 * 3,
-    bio: "Tech enthusiast looking to improve local governance transparency.",
-    handle: "arun_k",
-    constituencyId: "021",
-  },
-};
-
-const SEED_MESSAGES: Record<string, any> = {
-  "seed-msg-1": {
-    id: "seed-msg-1",
-    body: "Vanakkam Anna Nagar assembly! Excited to launch this digital forum for local policy discussion.",
-    createdAt: Date.now() - 3600000 * 10,
-    authorId: "seed-prof-1",
-    constituencyId: "021",
-  },
-  "seed-msg-2": {
-    id: "seed-msg-2",
-    body: "We should organize a community vote on improving green spaces around Tower Park.",
-    createdAt: Date.now() - 3600000 * 8,
-    authorId: "seed-prof-2",
-    constituencyId: "021",
-  },
-  "seed-msg-3": {
-    id: "seed-msg-3",
-    body: "Agreed. Let's draft a proposal and invite the local ward members to join the space.",
-    createdAt: Date.now() - 3600000 * 4,
-    authorId: "seed-prof-3",
-    constituencyId: "021",
-  },
-};
-
-const globalStore: Store = {
-  user: null,
-  profiles: { ...SEED_PROFILES },
-  messages: { ...SEED_MESSAGES },
-};
-
-let isInitialized = false;
-const listeners = new Set<() => void>();
-
-function notifyListeners() {
-  for (const listener of listeners) {
-    listener();
-  }
+function toCamelCase(s: string): string {
+  return s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 }
 
-// Load Store from AsyncStorage
-AsyncStorage.getItem("@thamizh_store")
-  .then((saved) => {
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        globalStore.user = parsed.user || null;
-        globalStore.profiles = { ...SEED_PROFILES, ...parsed.profiles };
-        globalStore.messages = { ...SEED_MESSAGES, ...parsed.messages };
-      } catch (e) {
-        console.error("Failed to parse local store", e);
-      }
-    }
-    isInitialized = true;
-    notifyListeners();
-  })
-  .catch(() => {
-    isInitialized = true;
-    notifyListeners();
-  });
-
-async function saveStore() {
-  try {
-    await AsyncStorage.setItem("@thamizh_store", JSON.stringify(globalStore));
-  } catch (e) {
-    console.error("Failed to save store", e);
+export async function callReducer(name: string, ...args: any[]): Promise<any> {
+  await ensureConnected();
+  if (!connection) throw new Error("Not connected");
+  const reducers = connection.reducers as Record<string, (...a: any[]) => any>;
+  const fn = reducers[name] ?? reducers[toCamelCase(name)];
+  if (!fn) {
+    const available = Object.keys(reducers).join(", ");
+    throw new Error(`Reducer "${name}" not found. Available: ${available}`);
   }
+  return await fn(...args);
 }
-
-class TxAction {
-  type: string;
-  id: string;
-  action: "create" | "update" | "delete";
-  attrs: any = {};
-  links: any = {};
-
-  constructor(
-    type: string,
-    id: string,
-    action: "create" | "update" | "delete",
-    attrs = {}
-  ) {
-    this.type = type;
-    this.id = id;
-    this.action = action;
-    this.attrs = attrs;
-  }
-
-  update(attrs: any) {
-    this.attrs = { ...this.attrs, ...attrs };
-    return this;
-  }
-
-  link(links: any) {
-    this.links = { ...this.links, ...links };
-    return this;
-  }
-}
-
-const txBuilder = {
-  profiles: new Proxy(
-    {},
-    {
-      get(target, id: string) {
-        return {
-          update: (attrs: any) => new TxAction("profiles", id, "update", attrs),
-          create: (attrs: any) => new TxAction("profiles", id, "create", attrs),
-        };
-      },
-    }
-  ),
-  messages: new Proxy(
-    {},
-    {
-      get(target, id: string) {
-        return {
-          create: (attrs: any) => new TxAction("messages", id, "create", attrs),
-          delete: () => new TxAction("messages", id, "delete"),
-        };
-      },
-    }
-  ),
-};
-
-function resolveQuery(queryObj: any): any {
-  const result: any = {};
-
-  for (const key in queryObj) {
-    if (key === "constituencies") {
-      let list = [...constituencies];
-      const params = queryObj[key]?.$;
-      if (params?.where) {
-        const where = params.where;
-        if (where.code !== undefined) {
-          list = list.filter((c) => c.code === where.code);
-        }
-      }
-      // Sort if ordered
-      if (params?.order?.number === "asc") {
-        list.sort((a, b) => a.number - b.number);
-      }
-      result.constituencies = list;
-    }
-
-    if (key === "profiles") {
-      let list = Object.values(globalStore.profiles);
-      const params = queryObj[key]?.$;
-      if (params?.where) {
-        const where = params.where;
-        if (where["user.id"] !== undefined) {
-          list = list.filter((p) => p.userId === where["user.id"]);
-        }
-        if (where["id"] !== undefined) {
-          list = list.filter((p) => p.id === where["id"]);
-        }
-      }
-      // Populate constituency
-      const finalProfiles = list.map((p) => {
-        const constituency =
-          constituencies.find((c) => c.id === p.constituencyId) || null;
-        return {
-          ...p,
-          constituency,
-        };
-      });
-      result.profiles = finalProfiles;
-    }
-
-    if (key === "messages") {
-      let list = Object.values(globalStore.messages);
-      const params = queryObj[key]?.$;
-      if (params?.where) {
-        const where = params.where;
-        if (where["author.id"] !== undefined) {
-          list = list.filter((m) => m.authorId === where["author.id"]);
-        }
-        if (where["constituency.code"] !== undefined) {
-          list = list.filter((m) => m.constituencyId === where["constituency.code"]);
-        }
-      }
-
-      // Sort
-      if (params?.order?.createdAt === "desc") {
-        list.sort((a, b) => b.createdAt - a.createdAt);
-      }
-
-      // Limit
-      if (params?.limit !== undefined) {
-        list = list.slice(0, params.limit);
-      }
-
-      // Populate relations
-      const finalMessages = list.map((m) => {
-        const author = globalStore.profiles[m.authorId] || null;
-        const constituency =
-          constituencies.find((c) => c.id === m.constituencyId) || null;
-        return {
-          ...m,
-          author: author
-            ? {
-                ...author,
-                constituency,
-              }
-            : null,
-          constituency,
-        };
-      });
-      result.messages = finalMessages;
-    }
-  }
-
-  return result;
-}
-
-export const db = {
-  useAuth() {
-    const [state, setState] = useState(() => ({
-      user: globalStore.user as any,
-      isLoading: !isInitialized,
-      error: null as any,
-    }));
-
-    useEffect(() => {
-      const listener = () => {
-        setState({
-          user: globalStore.user as any,
-          isLoading: !isInitialized,
-          error: null as any,
-        });
-      };
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    }, []);
-
-    return state;
-  },
-
-  useQuery(query: any) {
-    const [state, setState] = useState(() => ({
-      isLoading: !isInitialized,
-      data: query ? resolveQuery(query) : null,
-      error: null as any,
-    }));
-
-    useEffect(() => {
-      const listener = () => {
-        setState({
-          isLoading: !isInitialized,
-          data: query ? resolveQuery(query) : null,
-          error: null as any,
-        });
-      };
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    }, [JSON.stringify(query)]);
-
-    return state;
-  },
-
-  tx: txBuilder as any,
-
-  async transact(txActions: any | any[]) {
-    const actions = Array.isArray(txActions) ? txActions : [txActions];
-
-    for (const action of actions) {
-      const { type, id: actionId, action: op, attrs, links } = action;
-
-      if (type === "profiles") {
-        if (op === "create" || op === "update") {
-          const existing = globalStore.profiles[actionId] || {};
-          globalStore.profiles[actionId] = {
-            ...existing,
-            id: actionId,
-            ...attrs,
-            userId: links?.user || existing.userId || null,
-            constituencyId: links?.constituency || existing.constituencyId || null,
-          };
-        }
-      }
-
-      if (type === "messages") {
-        if (op === "create") {
-          globalStore.messages[actionId] = {
-            id: actionId,
-            ...attrs,
-            authorId: links?.author || null,
-            constituencyId: links?.constituency || null,
-          };
-        } else if (op === "delete") {
-          delete globalStore.messages[actionId];
-        }
-      }
-    }
-
-    await saveStore();
-    notifyListeners();
-  },
-
-  auth: {
-    async signInAsGuest() {
-      // Simulate connection lag of 100ms for natural feel, but fast
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      const guestId = "guest-" + Math.random().toString(36).substring(2, 11);
-      globalStore.user = { id: guestId };
-      await saveStore();
-      notifyListeners();
-    },
-    async signOut() {
-      globalStore.user = null;
-      await saveStore();
-      notifyListeners();
-    },
-  },
-};

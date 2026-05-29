@@ -1,4 +1,9 @@
-import { db } from "./db";
+import { useMemo } from "react";
+import { useSpacetimeDB } from "./SpacetimeDBProvider";
+import { ts } from "./db";
+import { reducers } from "./module_bindings";
+import type { User } from "./module_bindings/types";
+import constituenciesData from "../data/tn-assembly-constituencies.json";
 
 export type ConstituencyRow = {
   id: string;
@@ -11,46 +16,64 @@ export type ConstituencyRow = {
   reservation?: string;
 };
 
-export type ProfileRow = {
-  id: string;
-  displayName: string;
-  createdAt: number;
-  bio?: string;
-  handle?: string;
-  constituency?: ConstituencyRow;
-};
+const constituencyMap = new Map<string, ConstituencyRow>();
+for (const c of constituenciesData) {
+  constituencyMap.set(c.code, { ...c, id: c.code });
+}
+
+const constituencies = [...constituencyMap.values()];
+
+export { constituencies };
 
 export function useSession() {
-  const auth = db.useAuth();
-  const userId = auth.user?.id;
+  const { conn, users } = useSpacetimeDB();
+  const { identity, isActive, tablesReady, error } = conn;
 
-  const profileQuery = db.useQuery(
-    userId
-      ? {
-          profiles: {
-            $: { where: { "user.id": userId } },
-            constituency: {},
-          },
-        }
-      : null,
+  const currentUser = useMemo(() => {
+    if (!identity || !isActive || !tablesReady) return null;
+    return (
+      (users as User[]).find((u) => u.identity.toHexString() === identity.toHexString()) ??
+      null
+    );
+  }, [users, identity, isActive, tablesReady]);
+
+  const profile = useMemo(() => {
+    if (!currentUser) return null;
+    return {
+      id: currentUser.identity.toHexString(),
+      displayName: currentUser.displayName,
+      handle: currentUser.handle,
+      avatarUrl: currentUser.avatarUrl,
+      bio: "",
+      createdAt: ts(currentUser.lastSeen),
+    };
+  }, [currentUser]);
+
+  const user = useMemo(
+    () => (currentUser ? { id: currentUser.identity.toHexString() } : null),
+    [currentUser]
   );
 
-  const originalProfile = profileQuery.data?.profiles?.[0] as ProfileRow | undefined;
-  const profile = originalProfile || (auth.user ? {
-    id: auth.user.id,
-    displayName: (auth.user as any).email?.split("@")[0] || "Guest Member",
-    handle: "guest",
-    createdAt: Date.now(),
-    bio: "I just joined the platform.",
-  } as ProfileRow : null);
-  
-  const constituency = (profile?.constituency ?? null) as ConstituencyRow | null;
+  const constituency = null;
 
   return {
-    isLoading: auth.isLoading || (!!userId && profileQuery.isLoading),
-    error: auth.error || profileQuery.error,
-    user: auth.user ?? null,
+    isLoading: !error && (!isActive || !identity || !tablesReady),
+    error,
+    user,
     profile,
     constituency,
   };
+}
+
+export async function verifyBlueskyHandle(handle: string) {
+  const clean = handle.replace(/^@/, "").toLowerCase();
+  const res = await fetch(
+    `https://api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(clean)}`
+  );
+  if (!res.ok) {
+    const msg = res.status === 400 ? "Invalid Bluesky handle format" : "Bluesky handle not found";
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  return { did: data.did, handle: clean };
 }

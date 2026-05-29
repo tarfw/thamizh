@@ -12,8 +12,9 @@ import {
 } from "react-native";
 import { Pressable } from "@/lib/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { db, id as instantId } from "@/lib/db";
-import { useSession } from "@/lib/auth";
+import { useSpacetimeDB } from "@/lib/SpacetimeDBProvider";
+import { callReducer, ts } from "@/lib/db";
+import { useSession, constituencies } from "@/lib/auth";
 import Avatar from "@/lib/Avatar";
 import {
   ACCENT,
@@ -38,38 +39,21 @@ export default function ConstituencyChat() {
   const { code } = useLocalSearchParams<{ code: string }>();
   const { isLoading: sessionLoading, user, profile } = useSession();
   const [focused, setFocused] = useState(false);
-
-  const constituencyQuery = db.useQuery({
-    constituencies: { $: { where: { code } } },
-  });
-  const constituency = constituencyQuery.data?.constituencies?.[0] as
-    | {
-        id: string;
-        code: string;
-        nameEn: string;
-        nameTa: string;
-        district: string;
-        number: number;
-      }
-    | undefined;
-
-  const messagesQuery = db.useQuery(
-    constituency
-      ? {
-          messages: {
-            $: {
-              where: { "constituency.id": constituency.id },
-              order: { createdAt: "desc" },
-              limit: 200,
-            },
-            author: {},
-          },
-        }
-      : null,
-  );
-
-  const messages = (messagesQuery.data?.messages ?? []) as Message[];
+const { messages: allMessages } = useSpacetimeDB();
   const [draft, setDraft] = useState("");
+
+  const constituency = constituencies.find((c) => c.code === code) || null;
+
+  const messages = allMessages
+    .filter((m) => m.roomType === "constituency" && m.roomId === code)
+    .sort((a, b) => ts(b.sent) - ts(a.sent))
+    .slice(0, 200)
+    .map((m, idx) => ({
+      id: `${m.sender.toHexString()}_${ts(m.sent)}_${idx}`,
+      body: m.body,
+      createdAt: ts(m.sent),
+      author: { id: m.sender.toHexString(), displayName: m.sender.toHexString().slice(0, 8) },
+    })) as Message[];
 
   if (sessionLoading) {
     return (
@@ -88,15 +72,16 @@ export default function ConstituencyChat() {
   if (!user) return <Redirect href="/sign-in" />;
   if (!profile) return null;
 
-  const send = () => {
+  const send = async () => {
     const body = draft.trim();
-    if (!body || !profile || !constituency) return;
-    db.transact(
-      db.tx.messages[instantId()]
-        .update({ body, createdAt: Date.now() })
-        .link({ author: profile.id, constituency: constituency.id }),
-    );
+    if (!body || !constituency) return;
     setDraft("");
+    try {
+      await callReducer("send_message", { roomType: "constituency", roomId: code, body, parentId: undefined });
+    } catch (e) {
+      console.error("[chat] send_message failed:", e);
+      setDraft(body);
+    }
   };
 
   const canSend = !!draft.trim();
@@ -267,9 +252,7 @@ export default function ConstituencyChat() {
                   lineHeight: 18,
                 }}
               >
-                {messagesQuery.isLoading
-                  ? "Loading messages…"
-                  : "Be the first to send a message in this space."}
+                {"Be the first to send a message in this space."}
               </Text>
             </View>
           }

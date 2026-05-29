@@ -5,8 +5,8 @@ import Svg, { Path, Circle } from "react-native-svg";
 import { Pressable } from "@/lib/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { db } from "@/lib/db";
-import { useSession } from "@/lib/auth";
+
+import { useSession, constituencies } from "@/lib/auth";
 import Avatar from "@/lib/Avatar";
 import BrandLogo from "@/lib/BrandLogo";
 import {
@@ -275,12 +275,9 @@ export default function Hub() {
   const { code } = useLocalSearchParams<{ code: string }>();
   const { user, profile: userProfile } = useSession();
 
-  const { data } = db.useQuery({
-    constituencies: { $: { where: { code } } },
-  });
   const eelamMock = EELAM_MOCKS[code as string];
-  const c = (data?.constituencies?.[0] || eelamMock) as
-    | { id: string; nameEn: string; nameTa: string; district: string; number: number }
+  const c = (constituencies.find((x: { code: string }) => x.code === code) || eelamMock) as
+    | { id: string; code: string; nameEn: string; nameTa: string; district: string; number: number }
     | undefined;
 
   const { height: SCREEN_HEIGHT } = Dimensions.get("window");
