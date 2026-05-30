@@ -67,6 +67,12 @@ export function useSession() {
 
 export async function verifyBlueskyHandle(handle: string) {
   const clean = handle.replace(/^@/, "").toLowerCase();
+  if (clean.includes("@")) {
+    throw new Error(
+      "Bluesky handles use dots (.), not @ — try " +
+        clean.replace("@", ".")
+    );
+  }
   const res = await fetch(
     `https://api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(clean)}`
   );

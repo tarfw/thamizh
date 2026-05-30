@@ -48,6 +48,8 @@ export default function RootLayout() {
               <Stack.Screen name="pick-constituency" options={{ headerShown: false }} />
               <Stack.Screen name="spaces/index" options={{ headerShown: false }} />
               <Stack.Screen name="profile" options={{ headerShown: false }} />
+              <Stack.Screen name="community" options={{ headerShown: false }} />
+              <Stack.Screen name="roadmap" options={{ headerShown: false }} />
               <Stack.Screen name="chats/private/index" options={{ headerShown: false }} />
               <Stack.Screen name="chats/private/[id]/index" options={{ headerShown: false }} />
               <Stack.Screen name="chats/groups/index" options={{ headerShown: false }} />

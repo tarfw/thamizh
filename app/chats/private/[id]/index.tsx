@@ -1,12 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter, Redirect } from "expo-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FlatList, KeyboardAvoidingView, Platform, Text, TextInput, View } from "react-native";
 import { Pressable } from "@/lib/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSpacetimeDB } from "@/lib/SpacetimeDBProvider";
 import { callReducer, ts } from "@/lib/db";
 import { useSession } from "@/lib/auth";
+import { markRead } from "@/lib/unread";
 import Avatar from "@/lib/Avatar";
 import { ACCENT, ACCENT_DARK, BORDER_IDLE, HAIRLINE, MUTED, SURFACE_ALT, TEXT } from "@/lib/theme";
 
@@ -28,6 +29,13 @@ export default function PrivateChatRoom() {
   const messages = allMessages
     .filter((m) => m.roomType === "private" && m.roomId === roomId)
     .sort((a, b) => ts(b.sent) - ts(a.sent));
+
+  const latestTs = messages[0] ? ts(messages[0].sent) : 0;
+  useEffect(() => {
+    if (roomId && latestTs > 0) {
+      markRead(roomId, latestTs);
+    }
+  }, [roomId, latestTs]);
 
   if (isLoading) return null;
   if (!user) return <Redirect href="/sign-in" />;

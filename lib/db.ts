@@ -134,6 +134,26 @@ function attachAllTableListeners() {
 
 let initPromise: Promise<void> | null = null;
 
+export async function disconnect(): Promise<void> {
+  if (connection) {
+    try { (connection as any).disconnect?.(); } catch {}
+    connection = null;
+  }
+  isActive = false;
+  identityRef = null;
+  identityHex = null;
+  tablesReady = false;
+  connectError = null;
+  usersSnapshot = [];
+  messagesSnapshot = [];
+  groupChatsSnapshot = [];
+  groupMembersSnapshot = [];
+  refreshConnectionSnapshot();
+  initPromise = null;
+  await AsyncStorage.removeItem(TOKEN_KEY).catch(() => {});
+  notify();
+}
+
 export async function ensureConnected(): Promise<void> {
   if (initPromise) return initPromise;
   initPromise = (async () => {
